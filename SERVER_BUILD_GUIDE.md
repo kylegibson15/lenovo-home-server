@@ -7,15 +7,15 @@
 
 ## Progress Tracker
 
-- [ ] **Phase 1: Hardware Audit** — Check specs, identify upgrades
-- [ ] **Phase 2: Hardware Upgrades** — RAM and SSD if needed
-- [ ] **Phase 3: Create Install Media** — Ubuntu Server USB from MacBook
-- [ ] **Phase 4: Install Ubuntu Server** — Wipe Windows, install Linux
-- [ ] **Phase 5: Base Server Setup** — Updates, SSH, networking
-- [ ] **Phase 6: Install Ollama** — LLM runtime
-- [ ] **Phase 7: Run a Model** — Pull and test a small LLM
-- [ ] **Phase 8: Network Access** — Expose API to local network
-- [ ] **Phase 9: Optional Web UI** — Browser-based chat interface
+- [x] **Phase 1: Hardware Audit** — Check specs, identify upgrades
+- [x] **Phase 2: Hardware Upgrades** — Skipped (proceeding with current hardware)
+- [x] **Phase 3: Create Install Media** — Ubuntu Server USB from MacBook
+- [x] **Phase 4: Install Ubuntu Server** — Wipe Windows, install Linux
+- [x] **Phase 5: Base Server Setup** — Updates, SSH, networking, lid switch fix
+- [x] **Phase 6: Install Ollama** — LLM runtime
+- [x] **Phase 7: Run a Model** — Pull and test tinyllama
+- [x] **Phase 8: Network Access** — Expose API to local network
+- [x] **Phase 9: Browser Chat UI** — Lightweight client-side chat via Safari
 
 ---
 
@@ -489,69 +489,61 @@ sudo ufw status
 
 ---
 
-## Phase 9: Optional Web UI
+## Phase 9: Browser Chat Interface
 
 **Goal:** Add a browser-based chat interface so you don't need curl/terminal
 to interact with the model.
 
-### Open WebUI
+### Approach: Lightweight client-side HTML
 
-Open WebUI is a self-hosted ChatGPT-style interface that connects to
-Ollama's API.
+Instead of running a heavy web UI (like Open WebUI + Docker) on the
+ThinkPad — which would strain the 4 GB RAM — we use a single HTML file
+that runs in your MacBook's browser. The ThinkPad only handles API
+requests, and your MacBook handles the UI. Zero extra server load.
 
-### Install Docker (required for Open WebUI)
+The file is `chat.html` in this project folder.
 
-```bash
-# Install Docker's official GPG key and repo
-sudo apt install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
+### How it works
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+- `chat.html` is a self-contained HTML/CSS/JS file with no dependencies
+- It connects directly to the Ollama REST API at `http://10.0.0.3:11434`
+- Responses stream token-by-token as Ollama generates them
+- Supports multi-turn conversation (context is preserved within a session)
+- Auto-detects all models loaded in Ollama via the `/api/tags` endpoint
 
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+### Serving the chat UI
 
-# Let your user run Docker without sudo
-sudo usermod -aG docker $USER
-```
-
-Log out and back in for the group change to take effect:
+Browsers may block requests from `file://` URLs to local network IPs.
+Serve it via a simple HTTP server on your MacBook:
 
 ```bash
-exit
-# SSH back in
+cd /path/to/lenovo-home-server
+python3 -m http.server 8080
 ```
 
-### Run Open WebUI
-
-```bash
-docker run -d \
-  --name open-webui \
-  --network host \
-  -v open-webui:/app/backend/data \
-  -e OLLAMA_BASE_URL=http://127.0.0.1:11434 \
-  --restart always \
-  ghcr.io/open-webui/open-webui:main
-```
-
-Note: On this hardware, Docker + Open WebUI will use additional RAM. If
-you're at 8 GB, this is fine. At 4 GB, skip this and use the REST API
-directly.
-
-### Access the UI
-
-Open a browser on your MacBook and go to:
+Then open in **Safari** (Chrome blocks local network requests by default):
 
 ```
-http://192.168.x.x:8080
+http://localhost:8080/chat.html
 ```
 
-Create an admin account on first visit. Select tinyllama as your model
-and start chatting.
+### Chrome compatibility note
+
+Chrome's "Block insecure private network requests" feature prevents
+`localhost` pages from reaching local network IPs like `10.0.0.3`. To
+fix this, go to `chrome://flags`, search for "Block insecure private
+network requests", and set it to **Disabled**. Or just use Safari.
+
+### Updating the server IP
+
+If the ThinkPad's IP changes (it uses DHCP), edit `chat.html` and update
+this line near the top of the `<script>` block:
+
+```javascript
+const OLLAMA_URL = "http://10.0.0.3:11434";
+```
+
+To avoid this, set a static IP on the ThinkPad (see Phase 5).
 
 ---
 
@@ -606,17 +598,37 @@ curl http://localhost:11434/api/chat -d '{
 
 ---
 
-## Hardware Specs (Fill In After Phase 1)
+## Hardware Specs
 
 | Component | Value |
 |---|---|
-| Laptop model | |
-| CPU | |
-| Cores / Threads | |
-| RAM (total) | |
-| RAM (slot 1) | |
-| RAM (slot 2) | |
-| Storage type | |
-| Storage size | |
-| Ubuntu version | |
-| Server IP | |
+| Laptop model | Lenovo 3093W5D (ThinkPad T410) |
+| CPU | Intel Core i5-520M (Family 6 Model 37) ~661 MHz |
+| Cores / Threads | 2 cores / 4 threads |
+| RAM (total) | 4 GB (3,892 MB reported) |
+| RAM (slot 1) | 2 GB DDR3 PC3-8500 (1066 MHz) — Samsung (80CE) |
+| RAM (slot 2) | 2 GB DDR3 PC3-8500 (1066 MHz) — Samsung (80CE) |
+| Storage type | HDD (Hitachi, spinning disk) |
+| Storage size | 160 GB |
+| BIOS | LENOVO 6QET45WW v1.15 (4/26/2010) |
+| Original OS | Windows 7 Professional SP1 (Build 7601) |
+| Ubuntu version | 24.04.3 LTS (kernel 6.8.0-94-generic) |
+| Server IP | 10.0.0.3 (wifi, DHCP) |
+
+### Optional upgrades (deferred)
+
+These would improve performance but are **not required** for learning.
+Better to invest in a more capable machine later if this becomes a
+long-term interest.
+
+1. **RAM:** Both slots full with 2 GB sticks (4 GB total). Could upgrade
+   to 2 x 4 GB DDR3 PC3-8500 SO-DIMM 1.5V for 8 GB (~$10-15).
+2. **Storage:** 160 GB Hitachi HDD. Could replace with a 2.5" SATA SSD
+   (~$15-20).
+
+### Constraint with current hardware
+
+- **Stick to tinyllama only.** At 4 GB RAM, the OS uses ~1 GB, Ollama
+  uses some overhead, and tinyllama needs ~1 GB. Larger models will
+  cause the system to swap heavily or crash.
+- Model loading will be slower on HDD but still functional.
